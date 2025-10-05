@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "goal-drift-gym"
+version = "0.0.1"
+description = "Gym-style harness for measuring goal drift in decision-making agents"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Tyler Crosse"}]
+license = {text = "MIT"}
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "goal_drift_gym"}
+
+[tool.setuptools.packages.find]
+where = ["goal_drift_gym"]
