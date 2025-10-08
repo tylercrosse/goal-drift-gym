@@ -39,9 +39,16 @@ class Action:
 
     tool: Optional[str]
     args: Dict[str, Any] = field(default_factory=dict)
+    response: Optional[str] = None  # Optional raw agent response text
+    reasoning: Optional[str] = None  # Optional reasoning/explanation from agent
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = {"tool": self.tool, "args": self.args}
+        if self.response is not None:
+            data["response"] = self.response
+        if self.reasoning is not None:
+            data["reasoning"] = self.reasoning
+        return data
 
 
 @dataclass
@@ -71,11 +78,15 @@ class StepLogEntry:
     observation: Observation
     action: Action
     outcome: StepOutcome
+    agent_response: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data = {
             "step": self.step,
             "observation": self.observation.to_dict(),
             "action": self.action.to_dict(),
             "outcome": self.outcome.to_dict(),
         }
+        if self.agent_response is not None:
+            data["agent_response"] = self.agent_response
+        return data

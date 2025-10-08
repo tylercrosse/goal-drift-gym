@@ -87,6 +87,7 @@ class Engine:
                 observation=observation,
                 action=action,
                 outcome=outcome,
+                agent_response=action.response,
             )
             steps.append(log_entry)
 

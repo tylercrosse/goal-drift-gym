@@ -337,6 +337,10 @@ def write_run_artifacts(
             fh.write(json.dumps(entry.to_dict()) + "\n")
 
     (run_dir / "transcript.txt").write_text(format_transcript(steps), encoding="utf-8")
+    (run_dir / "transcript.md").write_text(
+        format_transcript_markdown(steps, run_config.scenario, run_config, scenario_config, engine_config),
+        encoding="utf-8",
+    )
 
     (artifacts_dir / "README.txt").write_text("Artifacts for run will be stored here.\n")
 
@@ -356,6 +360,7 @@ def current_git_sha() -> str | None:
 
 
 def format_transcript(steps: Iterable[StepLogEntry]) -> str:
+    """Format transcript as plain text (legacy format)."""
     lines: list[str] = []
     for entry in steps:
         obs = entry.observation
@@ -365,6 +370,10 @@ def format_transcript(steps: Iterable[StepLogEntry]) -> str:
             panels = ", ".join(f"{k}: {v}" for k, v in obs.panels.items())
             lines.append(f"Panels: {panels}")
         lines.append("Agent →")
+        if entry.action.reasoning:
+            lines.append(f"  Reasoning: {entry.action.reasoning}")
+        if entry.agent_response:
+            lines.append(f"  Response: {entry.agent_response}")
         tool = entry.action.tool or "noop"
         lines.append(f"  Tool: {tool}")
         if entry.action.args:
@@ -375,6 +384,112 @@ def format_transcript(steps: Iterable[StepLogEntry]) -> str:
             lines.append(f"Log: {json.dumps(outcome.log)}")
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+def format_transcript_markdown(
+    steps: Iterable[StepLogEntry],
+    scenario: str,
+    run_config: Any,
+    scenario_config: Any,
+    engine_config: EngineConfig,
+) -> str:
+    """Format transcript as markdown for better readability."""
+    lines: list[str] = []
+
+    # Header
+    lines.append(f"# Scenario Run: {scenario}")
+    lines.append("")
+
+    # Configuration summary
+    lines.append("## Configuration")
+    lines.append("")
+    if run_config.agent:
+        agent_model = run_config.agent.params.get("model", run_config.agent.type)
+        lines.append(f"- **Agent**: {agent_model}")
+    elif run_config.policy:
+        lines.append(f"- **Policy**: {run_config.policy}")
+    lines.append(f"- **Seed**: {engine_config.seed}")
+    lines.append(f"- **Max Steps**: {engine_config.max_steps}")
+    if hasattr(scenario_config, "__dict__"):
+        for key, value in scenario_config.__dict__.items():
+            if key not in ["seed", "max_steps"]:
+                lines.append(f"- **{key.replace('_', ' ').title()}**: {value}")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Steps
+    for entry in steps:
+        obs = entry.observation
+        lines.append(f"## Step {obs.step}")
+        lines.append("")
+
+        # Environment section
+        lines.append("### Environment")
+        lines.append("")
+        lines.append(obs.message.strip())
+        lines.append("")
+        if obs.panels:
+            lines.append("**Panels:**")
+            for key, value in obs.panels.items():
+                lines.append(f"- `{key}`: {value}")
+            lines.append("")
+
+        if obs.tools:
+            lines.append("<details>")
+            lines.append("<summary>Available tools</summary>")
+            lines.append("")
+            for tool in obs.tools:
+                lines.append(f"- **{tool.name}**: {tool.description}")
+                if tool.args_schema:
+                    lines.append(f"  - Args: `{json.dumps(tool.args_schema)}`")
+            lines.append("")
+            lines.append("</details>")
+            lines.append("")
+
+        # Agent section
+        lines.append("### Agent")
+        lines.append("")
+
+        if entry.action.reasoning:
+            lines.append(f"**Reasoning:** {entry.action.reasoning}")
+            lines.append("")
+
+        if entry.agent_response:
+            lines.append("<details>")
+            lines.append("<summary>Raw response</summary>")
+            lines.append("")
+            lines.append("```json")
+            lines.append(entry.agent_response)
+            lines.append("```")
+            lines.append("")
+            lines.append("</details>")
+            lines.append("")
+
+        tool = entry.action.tool or "noop"
+        lines.append(f"**Action:** `{tool}`")
+        if entry.action.args:
+            lines.append("```json")
+            lines.append(json.dumps(entry.action.args, indent=2))
+            lines.append("```")
+        lines.append("")
+
+        # Outcome section
+        lines.append("### Outcome")
+        lines.append("")
+        outcome = entry.outcome
+        lines.append(f"**Alignment Score:** {outcome.alignment_score:.3f}")
+        if outcome.log:
+            lines.append("")
+            lines.append("**Log:**")
+            lines.append("```json")
+            lines.append(json.dumps(outcome.log, indent=2))
+            lines.append("```")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def resolve_run_label(run_config: RunConfig) -> str:
