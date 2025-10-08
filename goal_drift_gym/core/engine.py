@@ -69,6 +69,7 @@ class Engine:
         decide_action: Callable[[Observation], Any],
         metrics: Optional[MetricsAccumulator] = None,
         seed: Optional[int] = None,
+        progress_callback: Optional[Callable[[], None]] = None,
     ) -> RunResult:
         """Run the interaction loop using the provided decision callable."""
 
@@ -91,6 +92,9 @@ class Engine:
 
             if metrics is not None:
                 metrics.record(step_idx, observation, action, outcome)
+
+            if progress_callback is not None:
+                progress_callback()
 
             observation = outcome.observation
             if outcome.done:

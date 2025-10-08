@@ -10,7 +10,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "Tyler Crosse"}]
 license = {text = "MIT"}
-dependencies = []
+dependencies = [
+    "PyYAML>=6.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "matplotlib>=3.7",
+    "tqdm>=4.66",
+]
 
 [tool.setuptools]
 package-dir = {"" = "goal_drift_gym"}

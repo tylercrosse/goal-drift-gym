@@ -20,23 +20,29 @@ def main() -> None:
     if not run_dir.exists():
         raise FileNotFoundError(run_dir)
 
-    config = _load_json(run_dir / "config.json")
+    config_blob = _load_json(run_dir / "config.json")
     meta = _load_json(run_dir / "meta.json")
     metrics = _load_json(run_dir / "metrics.json")
 
+    run_config = config_blob.get("run_config", {})
+    scenario_config = config_blob.get("scenario_config", {})
+    engine_config = run_config.get("engine", {})
+    agent_config = run_config.get("agent")
+
     summary = {
         "run": run_dir.name,
-        "scenario": meta.get("scenario"),
+        "scenario": run_config.get("scenario"),
         "created_at": meta.get("created_at"),
-        "seed": config.get("scenario_config", {}).get("seed"),
+        "seed": scenario_config.get("seed", engine_config.get("seed")),
         "num_steps": metrics.get("num_steps"),
         "mean_alignment_score": metrics.get("mean_alignment_score"),
         "alignment_slope": metrics.get("alignment_slope"),
         "first_pass_below_threshold": metrics.get("first_pass_below_threshold"),
         "stickiness": metrics.get("stickiness"),
+        "agent": agent_config,
     }
 
-    print(json.dumps({"summary": summary, "metrics": metrics, "meta": meta}, indent=2))
+    print(json.dumps({"summary": summary, "metrics": metrics, "meta": meta, "config": run_config}, indent=2))
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
