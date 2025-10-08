@@ -9,7 +9,7 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Callable
+from typing import Any, Dict, Iterable, Callable, Optional
 
 from tqdm import tqdm
 
@@ -365,13 +365,32 @@ def format_transcript(steps: Iterable[StepLogEntry]) -> str:
     for entry in steps:
         obs = entry.observation
         lines.append(f"Step {obs.step} — Scenario")
-        lines.append(obs.message.strip())
+        lines.append(f"  {obs.message.strip()}")
+        if entry.action.prompt:
+            if "\n" in entry.action.prompt:
+                lines.append("  Prompt →")
+                for line in entry.action.prompt.splitlines():
+                    lines.append(f"    {line}")
+            else:
+                lines.append(f"  Prompt → {entry.action.prompt.strip()}")
         if obs.panels:
             panels = ", ".join(f"{k}: {v}" for k, v in obs.panels.items())
             lines.append(f"Panels: {panels}")
         lines.append("Agent →")
-        if entry.action.reasoning:
-            lines.append(f"  Reasoning: {entry.action.reasoning}")
+        reasoning = entry.action.reasoning if entry.action.reasoning is not None else "None"
+        if "\n" in reasoning:
+            lines.append("  Reasoning:")
+            for line in reasoning.splitlines():
+                lines.append(f"    {line}")
+        else:
+            lines.append(f"  Reasoning: {reasoning}")
+        content = entry.action.content if entry.action.content is not None else "None"
+        if "\n" in content:
+            lines.append("  Content:\n")
+            for line in content.splitlines():
+                lines.append(f"    {line}")
+        else:
+            lines.append(f"  Content: {content}")
         if entry.agent_response:
             lines.append(f"  Response: {entry.agent_response}")
         tool = entry.action.tool or "noop"
@@ -395,6 +414,20 @@ def format_transcript_markdown(
 ) -> str:
     """Format transcript as markdown for better readability."""
     lines: list[str] = []
+
+    def append_md_field(label: str, value: Optional[str]) -> None:
+        if value is None:
+            lines.append(f"**{label}:** _None_")
+            lines.append("")
+            return
+        if "\n" in value:
+            lines.append(f"**{label}:**")
+            lines.append("```text")
+            lines.append(value)
+            lines.append("```")
+        else:
+            lines.append(f"**{label}:** {value}")
+        lines.append("")
 
     # Header
     lines.append(f"# Scenario Run: {scenario}")
@@ -447,17 +480,38 @@ def format_transcript_markdown(
             lines.append("</details>")
             lines.append("")
 
+        if entry.action.prompt:
+            lines.append("<details>")
+            lines.append("<summary>Raw prompt</summary>")
+            lines.append("")
+            lines.append("```text")
+            lines.append(entry.action.prompt)
+            lines.append("```")
+            lines.append("")
+            lines.append("</details>")
+            lines.append("")
+
         # Agent section
         lines.append("### Agent")
         lines.append("")
 
-        if entry.action.reasoning:
-            lines.append(f"**Reasoning:** {entry.action.reasoning}")
+        append_md_field("Reasoning", entry.action.reasoning)
+        append_md_field("Content", entry.action.content)
+
+        if entry.action.response:
+            lines.append("<details>")
+            lines.append("<summary>Raw assistant message</summary>")
+            lines.append("")
+            lines.append("```json")
+            lines.append(entry.action.response)
+            lines.append("```")
+            lines.append("")
+            lines.append("</details>")
             lines.append("")
 
-        if entry.agent_response:
+        if entry.agent_response and entry.agent_response != entry.action.response:
             lines.append("<details>")
-            lines.append("<summary>Raw response</summary>")
+            lines.append("<summary>Legacy raw response</summary>")
             lines.append("")
             lines.append("```json")
             lines.append(entry.agent_response)
