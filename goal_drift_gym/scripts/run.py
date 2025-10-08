@@ -80,8 +80,13 @@ def main() -> None:
 
     run_config = build_run_config_from_args(args)
 
-    scenario, scenario_config = build_scenario(run_config.scenario, run_config.scenario_params)
-    engine_config = reconcile_engine_config(run_config.engine, scenario_config)
+    # Ensure engine's max_steps is always passed to scenario_params
+    # This keeps engine and scenario in sync
+    scenario_params = run_config.scenario_params.copy()
+    scenario_params["max_steps"] = run_config.engine.max_steps
+
+    scenario, scenario_config = build_scenario(run_config.scenario, scenario_params)
+    engine_config = run_config.engine
 
     engine = Engine(scenario, config=engine_config)
     metrics = AlignmentMetricsAccumulator(threshold=run_config.metrics.alignment.threshold)
@@ -183,6 +188,7 @@ def interpret_scalar(value: str) -> Any:
 
 def reconcile_engine_config(engine_config: EngineConfig, scenario_config: Any) -> EngineConfig:
     # If engine max_steps was not explicitly overridden, align it with the scenario when available.
+    # Otherwise, use the engine's max_steps (which takes precedence).
     default_max_steps = EngineConfig().max_steps
     if hasattr(scenario_config, "max_steps") and engine_config.max_steps == default_max_steps:
         engine_config = EngineConfig(
@@ -423,7 +429,9 @@ def format_transcript_markdown(
         if "\n" in value:
             lines.append(f"**{label}:**")
             lines.append("```text")
-            lines.append(value)
+            # Escape triple backticks in the content to prevent markdown parsing issues
+            escaped_value = value.replace("```", "\\`\\`\\`")
+            lines.append(escaped_value)
             lines.append("```")
         else:
             lines.append(f"**{label}:** {value}")

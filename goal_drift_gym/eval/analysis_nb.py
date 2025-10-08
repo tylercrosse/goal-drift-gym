@@ -55,13 +55,12 @@ def run_experiment(
 ):
     """Run a single experiment and return the run directory path."""
     # Build run config
-    run_config = RunConfig(
-        scenario=scenario,
-        agent=AgentConfig(type=agent, params={"model": model})
-    )
+    run_config = RunConfig(scenario=scenario)
     run_config = run_config.with_overrides(
         seed=seed,
         max_steps=max_steps,
+        agent_type=agent,
+        agent_params={"model": model},
     )
 
     # Build scenario and engine
@@ -104,17 +103,6 @@ def run_experiment(
 
 
 # %%
-# Example: Run an experiment
-run_dir = run_experiment(
-    scenario="release_manager",
-    seed=42,
-    agent="openrouter",
-    model="openai/gpt-4o-mini",
-    max_steps=20,
-)
-
-
-# %%
 # Plot results from a run
 def plot_run_results(run_path: Path | str, panels: tuple = ("pressure",)):
     """Generate plots for a single run."""
@@ -128,18 +116,6 @@ def plot_run_results(run_path: Path | str, panels: tuple = ("pressure",)):
     metrics = load_metrics(run_path)
     threshold = config.get("run_config", {}).get("metrics", {}).get("alignment", {}).get("threshold")
 
-    # Alignment timeseries
-    fig, ax = plt.subplots(figsize=(10, 4))
-    plot_alignment_timeseries(steps, threshold=threshold, ax=ax, title=f"Alignment — {run_path.name}")
-    plt.tight_layout()
-    plt.show()
-
-    # Tool usage
-    fig, ax = plt.subplots(figsize=(10, 3))
-    plot_tool_usage(steps, ax=ax, title=f"Tool usage — {run_path.name}")
-    plt.tight_layout()
-    plt.show()
-
     # Panel traces
     if panels:
         fig, ax = plt.subplots(figsize=(10, 4))
@@ -147,13 +123,59 @@ def plot_run_results(run_path: Path | str, panels: tuple = ("pressure",)):
         plt.tight_layout()
         plt.show()
 
+    # Tool usage
+    fig, ax = plt.subplots(figsize=(10, 3))
+    plot_tool_usage(steps, ax=ax, title=f"Tool usage — {run_path.name}")
+    plt.tight_layout()
+    plt.show()
+
+    # Alignment timeseries
+    fig, ax = plt.subplots(figsize=(10, 4))
+    plot_alignment_timeseries(steps, threshold=threshold, ax=ax, title=f"Alignment — {run_path.name}")
+    plt.tight_layout()
+    plt.show()
+
     return metrics
 
 
 # %%
-# Example: Plot results
+run_dir = run_experiment(
+    scenario="release_manager",
+    seed=42,
+    agent="openrouter",
+    model="openai/gpt-4o-mini",
+    max_steps=20,
+)
+
+# Plot results
 metrics = plot_run_results(run_dir, panels=("pressure",))
 print(f"Final metrics: {metrics}")
 
 
 # %%
+run_dir = run_experiment(
+    scenario="release_manager",
+    seed=42,
+    agent="openrouter",
+    model="openai/gpt-5-nano",
+    max_steps=20,
+)
+
+# Plot results
+metrics = plot_run_results(run_dir, panels=("pressure",))
+print(f"Final metrics: {metrics}")
+
+
+# %%
+run_dir = run_experiment(
+    scenario="release_manager",
+    seed=42,
+    agent="openrouter",
+    model="openai/gpt-4o-mini",
+    max_steps=40,
+)
+print(f"Run saved to: {run_dir}")
+
+# Plot results
+metrics = plot_run_results(run_dir, panels=("pressure",))
+print(f"Final metrics: {metrics}")
