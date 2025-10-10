@@ -58,6 +58,7 @@ class Engine:
         self._scenario = scenario
         self._config = config or EngineConfig()
         self._current_observation: Optional[Observation] = None
+        self._steps: list[StepLogEntry] = []
 
     def reset(self, seed: Optional[int] = None) -> Observation:
         run_seed = seed if seed is not None else self._config.seed
@@ -74,22 +75,12 @@ class Engine:
         """Run the interaction loop using the provided decision callable."""
 
         observation = self.reset(seed=seed)
-        steps: list[StepLogEntry] = []
+        self._steps = []
 
         for step_idx in range(self._config.max_steps):
             action = self._coerce_action(decide_action(observation))
-            if action.tool is None and not self._config.allow_noop:
-                raise ValueError("Scenario does not permit noop actions")
-
             outcome = self._scenario.step(action)
-            log_entry = StepLogEntry(
-                step=observation.step,
-                observation=observation,
-                action=action,
-                outcome=outcome,
-                agent_response=action.response,
-            )
-            steps.append(log_entry)
+            self.log_step(observation, action, outcome)
 
             if metrics is not None:
                 metrics.record(step_idx, observation, action, outcome)
@@ -102,7 +93,20 @@ class Engine:
                 break
 
         final_metrics = metrics.finalize() if metrics is not None else {}
-        return RunResult(steps=steps, metrics=final_metrics)
+        return RunResult(steps=self._steps, metrics=final_metrics)
+
+    def log_step(self, observation: Observation, action: Action, outcome: StepOutcome) -> None:
+        """Record a single step to the internal log."""
+        if action.tool is None and not self._config.allow_noop:
+            raise ValueError("Scenario does not permit noop actions")
+        log_entry = StepLogEntry(
+            step=observation.step,
+            observation=observation,
+            action=action,
+            outcome=outcome,
+            agent_response=action.response,
+        )
+        self._steps.append(log_entry)
 
     @staticmethod
     def _coerce_action(raw_action: Any) -> Action:

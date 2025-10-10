@@ -16,6 +16,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from goal_drift_gym.core import Engine
+from goal_drift_gym.core.engine import RunResult
 from goal_drift_gym.core.config import RunConfig, AgentConfig
 from goal_drift_gym.eval import AlignmentMetricsAccumulator
 from goal_drift_gym.scenarios import build_scenario
@@ -23,7 +24,6 @@ from goal_drift_gym.scripts.run import (
     build_decider,
     prepare_run_dirs,
     write_run_artifacts,
-    reconcile_engine_config,
     resolve_run_label,
 )
 from goal_drift_gym.eval.plots import (
@@ -31,6 +31,7 @@ from goal_drift_gym.eval.plots import (
     load_run_config,
     load_step_log,
     plot_alignment_timeseries,
+    plot_overlay_timeseries,
     plot_panel_traces,
     plot_tool_usage,
 )
@@ -52,6 +53,7 @@ def run_experiment(
     max_steps: int = 20,
     runs_root: Path = Path("runs"),
     artifacts_root: Path = Path("artifacts"),
+    scenario_updates: dict | None = None,
 ):
     """Run a single experiment and return the run directory path."""
     # Build run config
@@ -61,19 +63,44 @@ def run_experiment(
         max_steps=max_steps,
         agent_type=agent,
         agent_params={"model": model},
+        scenario_updates=scenario_updates,
     )
 
+    # Ensure engine's max_steps is always passed to scenario_params
+    # This keeps engine and scenario in sync
+    scenario_params = run_config.scenario_params.copy()
+    scenario_params["max_steps"] = run_config.engine.max_steps
+
     # Build scenario and engine
-    scenario_obj, scenario_config = build_scenario(run_config.scenario, run_config.scenario_params)
-    engine_config = reconcile_engine_config(run_config.engine, scenario_config)
+    scenario_obj, scenario_config = build_scenario(run_config.scenario, scenario_params)
+    engine_config = run_config.engine
 
     # Run the experiment
     engine = Engine(scenario_obj, config=engine_config)
     metrics = AlignmentMetricsAccumulator(threshold=run_config.metrics.alignment.threshold)
     decider = build_decider(run_config)
 
+    # This is a simplified run loop. For full features, use the main CLI.
+    # We need to manually add optimal_action to the log.
+    def run_with_optimal_action_logging(engine, decider, metrics, seed, progress_callback):
+        observation = engine.reset(seed=seed)
+        engine._steps = []
+        for _ in range(engine._config.max_steps):
+            action = engine._coerce_action(decider(observation))
+            action.optimal_action = engine._scenario._get_optimal_action()
+            outcome = engine._scenario.step(action)
+            metrics.record(observation.step, observation, action, outcome)
+            engine.log_step(observation, action, outcome)
+            if progress_callback:
+                progress_callback()
+            observation = outcome.observation
+            if outcome.done:
+                break
+        final_metrics = metrics.finalize() if metrics is not None else {}
+        return RunResult(steps=engine._steps, metrics=final_metrics)
+
     with tqdm(total=engine_config.max_steps, desc="Running scenario", unit="step") as pbar:
-        result = engine.run(decider, metrics=metrics, seed=engine_config.seed, progress_callback=lambda: pbar.update(1))
+        result = run_with_optimal_action_logging(engine, decider, metrics, engine_config.seed, lambda: pbar.update(1))
         if pbar.n < pbar.total:
             pbar.update(pbar.total - pbar.n)
 
@@ -104,7 +131,7 @@ def run_experiment(
 
 # %%
 # Plot results from a run
-def plot_run_results(run_path: Path | str, panels: tuple = ("pressure",)):
+def plot_run_results(run_path: Path | str, panels: tuple = ("pressure",), overlay: bool = True):
     """Generate plots for a single run."""
     run_path = Path(run_path)
 
@@ -134,6 +161,17 @@ def plot_run_results(run_path: Path | str, panels: tuple = ("pressure",)):
     plot_alignment_timeseries(steps, threshold=threshold, ax=ax, title=f"Alignment — {run_path.name}")
     plt.tight_layout()
     plt.show()
+
+    if overlay:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        plot_overlay_timeseries(
+            steps,
+            threshold=threshold,
+            ax=ax,
+            title=f"Overlay — {run_path.name}",
+        )
+        plt.tight_layout()
+        plt.show()
 
     return metrics
 
@@ -173,6 +211,83 @@ run_dir = run_experiment(
     agent="openrouter",
     model="openai/gpt-4o-mini",
     max_steps=40,
+)
+print(f"Run saved to: {run_dir}")
+
+# Plot results
+metrics = plot_run_results(run_dir, panels=("pressure",))
+print(f"Final metrics: {metrics}")
+
+
+# Plot results
+metrics = plot_run_results(run_dir, panels=("pressure",))
+print(f"Final metrics: {metrics}")
+
+# %%
+# Example baseline (no pressure growth)
+run_dir = run_experiment(
+    scenario="release_manager",
+    seed=42,
+    agent="openrouter",
+    model="openai/gpt-4o-mini",
+    max_steps=20,
+    scenario_updates={
+        "pressure_growth": 0,
+        # "test_freshness": 2,
+        # "canary_dropout_rate": 0.25,
+        # "test_flakiness_rate": 0.2,
+    },
+)
+print(f"Run saved to: {run_dir}")
+
+# Plot results
+metrics = plot_run_results(run_dir, panels=("pressure",))
+print(f"Final metrics: {metrics}")
+# %%
+run_dir = run_experiment(
+    scenario="release_manager",
+    seed=42,
+    agent="openrouter",
+    model="openai/gpt-4o-mini",
+    max_steps=20,
+    scenario_updates={
+        "pressure_growth": 0.1,
+        "pressure_start": 10,
+    },
+)
+print(f"Run saved to: {run_dir}")
+
+# Plot results
+metrics = plot_run_results(run_dir, panels=("pressure",))
+print(f"Final metrics: {metrics}")
+
+# %%
+run_dir = run_experiment(
+    scenario="release_manager",
+    seed=42,
+    agent="openrouter",
+    model="openai/gpt-5-mini",
+    max_steps=20,
+    scenario_updates={
+        "pressure_growth": 0.1,
+    },
+)
+print(f"Run saved to: {run_dir}")
+
+# Plot results
+metrics = plot_run_results(run_dir, panels=("pressure",))
+print(f"Final metrics: {metrics}")
+
+# %%
+run_dir = run_experiment(
+    scenario="release_manager",
+    seed=42,
+    agent="openrouter",
+    model="qwen/qwen3-14b",
+    max_steps=20,
+    scenario_updates={
+        "pressure_growth": 0.1,
+    },
 )
 print(f"Run saved to: {run_dir}")
 

@@ -40,6 +40,7 @@ class Action:
 
     tool: Optional[str]
     args: Dict[str, Any] = field(default_factory=dict)
+    optimal_action: Optional[str] = None  # Scenario's recommended action for the state
     prompt: Optional[str] = None  # Raw prompt sent to the agent
     response: Optional[str] = None  # Optional raw agent response text
     reasoning: Optional[str] = None  # Optional reasoning/explanation from agent
@@ -49,6 +50,8 @@ class Action:
 
     def to_dict(self) -> Dict[str, Any]:
         data = {"tool": self.tool, "args": self.args}
+        if self.optimal_action is not None:
+            data["optimal_action"] = self.optimal_action
         if self.prompt is not None:
             data["prompt"] = self.prompt
         if self.response is not None:

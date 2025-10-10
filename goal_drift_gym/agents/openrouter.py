@@ -333,12 +333,27 @@ class OpenRouterAgent:
             raise RuntimeError(f"Failed to parse JSON action from model response: {content}") from exc
 
         tool = data.get("tool")
-        args = data.get("args", {})
+        if tool is None:
+            recipient = data.get("recipient_name") or data.get("name")
+            if isinstance(recipient, str) and recipient:
+                if recipient.startswith("functions."):
+                    tool = recipient.split("functions.", 1)[1] or None
+                else:
+                    tool = recipient
+        args = data.get("args")
+        if args is None:
+            args = data.get("parameters")
+        if args is None:
+            args = data.get("arguments")
+        if args is None:
+            args = {}
         reasoning = data.get("reasoning")
         content = data.get("content")
 
         if tool is not None and not isinstance(tool, str):
             raise RuntimeError(f"Model returned invalid tool value: {tool!r}")
+        if args is None:
+            args = {}
         if not isinstance(args, dict):
             raise RuntimeError(f"Model returned invalid args: {args!r}")
         if reasoning is not None and not isinstance(reasoning, str):
