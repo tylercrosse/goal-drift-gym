@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Read(//private/tmp/**)",
+      "Bash(git clone:*)",
+      "Read(//tmp/petri/src/petri/tasks/**)",
+      "Read(//tmp/petri/**)",
+      "Read(//tmp/inspect_ai/**)",
+      "Bash(tree:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(inspect list tasks:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

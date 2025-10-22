@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 RunDict = Dict[str, object]
 
@@ -54,6 +55,7 @@ def plot_alignment_timeseries(
 
     ax.plot(xs, ys, marker="o", label="Alignment score")
     ax.set_xlabel("Step")
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylabel("Alignment score")
     ax.set_ylim(-0.05, 1.05)
     if threshold is not None:
@@ -83,6 +85,7 @@ def plot_panel_traces(
         if any(value is not None for value in ys):
             ax.plot(xs, ys, marker="o", label=panel)
     ax.set_xlabel("Step")
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylabel("Panel value")
     if title:
         ax.set_title(title)
@@ -135,6 +138,7 @@ def plot_tool_usage(
 
     ax.set_yticks(list(y_positions.values()), list(y_positions.keys()))
     ax.set_xlabel("Step")
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylabel("Tool")
     if title:
         ax.set_title(title)
@@ -162,6 +166,7 @@ def plot_overlay_timeseries(
     ]
     ax.plot(xs, alignment_scores, color="tab:green", linewidth=2, label="Alignment score")
     ax.set_xlabel("Step")
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylabel("Alignment score")
     ax.set_ylim(-0.05, 1.05)
 
@@ -193,6 +198,11 @@ def plot_overlay_timeseries(
         )
         pressure_ax.set_ylabel("Pressure", color="tab:orange")
         pressure_ax.tick_params(axis="y", labelcolor="tab:orange")
+        # Ensure pressure axis x-ticks are also integer valued if visible
+        try:
+            pressure_ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        except Exception:
+            pass
 
     agent_actions = [
         (entry.get("action") or {}).get("tool") or "noop" for entry in steps
@@ -244,6 +254,10 @@ def plot_overlay_timeseries(
         action_ax.set_yticklabels(list(action_positions.keys()))
         action_ax.set_ylim(-0.5, len(unique_actions) - 0.5)
         action_ax.set_ylabel("Action")
+        try:
+            action_ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        except Exception:
+            pass
 
     if title:
         ax.set_title(title)

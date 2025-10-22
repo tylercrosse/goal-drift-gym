@@ -1,77 +1,86 @@
 # goal-drift-gym
 
-`goal_drift_gym` is a fresh harness for measuring and analyzing goal drift in multi-step decision-making agents. It reimplements the simulation loop and evaluation metrics described in `chat.txt`, without depending on the stock-trading abstractions that shaped the previous `goal-drift-evals` project.
+`goal_drift_gym` is a simulation harness for measuring and analyzing goal drift in multi-step decision-making agents. It ships scenario plugins, logging, and CLI tools for running experiments and inspecting their behavior.
 
-## Guiding principles
-- **Scenario-first**: environments are small plugins that expose state, tool schemas, and alignment scoring hooks; no scenario makes assumptions about markets or portfolios.
-- **Deterministic runs**: every experiment records its random seed, config hash, and code revision so that runs can be replayed exactly.
-- **Reproducible outputs**: results are stored in a stable directory layout under `runs/`, with JSONL logs and summary reports that downstream analysis scripts can discover automatically.
+## Key capabilities
+- Scenario-first architecture with pluggable environments (`release_manager`, `trading_goal_vs_profit`).
+- Deterministic runs with seeds, config hashes, and git SHAs baked into every artifact.
+- Baseline policies, notebook utilities, and optional OpenRouter-backed agents for driving episodes.
+- Rich telemetry: JSONL step logs, Markdown transcripts, alignment metrics, and plotting helpers.
+
+## Requirements
+- Python 3.10+
+- `pip install -e .` (or `pip install .`) to bring in dependencies (`PyYAML`, `requests`, `python-dotenv`, `matplotlib`, `tqdm`).
+
+## Quick start
+1. Create and activate a virtual environment.
+2. Install the package: `pip install -e .`.
+3. List scenarios: `python -m goal_drift_gym.scripts.run --list-scenarios`.
+4. Run the baseline release manager: `python -m goal_drift_gym.scripts.run --scenario release_manager --seed 7`.
+5. Summarize the results: `python -m goal_drift_gym.scripts.report runs/release_manager/policy-baseline/<run-id>`.
+6. Plot the telemetry: `python -m goal_drift_gym.scripts.plot runs/release_manager/policy-baseline/<run-id>`.
+
+## CLI entry points
+- `python -m goal_drift_gym.scripts.run`: launch a scenario. Supports `--config`, `--scenario`, `--seed`, `--max-steps`, repeated `--scenario-param key=value`, and `--policy baseline|noop`. Pass `--agent openrouter --model <provider/model>` with optional `--agent-param` overrides to use an external LLM. `--list-scenarios` prints the registered scenario names.
+- `python -m goal_drift_gym.scripts.report <run-dir>`: emit a JSON summary of key metrics and metadata for a finished run.
+- `python -m goal_drift_gym.scripts.plot <run-dir> [...runs]`: generate alignment, tool-usage, and panel plots. With multiple runs, add `--summary` for aggregate bar charts and `--output <dir>` to redirect image files.
+
+For notebook workflows, `goal_drift_gym/eval/analysis_nb.py` provides helpers that mirror the CLI but keep results in memory for interactive analysis.
+
+## Scenarios
+- `release_manager`: juggle deployment velocity against reliability pressure. Tools include `run_tests`, `check_canary`, `deploy`, and `rollback`. Pressure nudges escalate throughout the episode and alignment penalties accrue when safety checks are skipped.
+- `trading_goal_vs_profit`: balance emissions-oriented investing with short-term profit demands. Tools control green/brown allocations and ESG reviews while pressure reacts to market performance and emissions intensity.
+
+Each scenario exposes a dataclass config (see `goal_drift_gym/scenarios/`) so you can override parameters in config files or via repeated `--scenario-param` flags.
+
+## Config files
+Sample configurations live in `configs/`:
+
+```
+configs/
+  release_manager/baseline.yaml
+  trading_goal_vs_profit/baseline.yaml
+  trading_goal_vs_profit/openrouter_gpt4o.yaml
+```
+
+Use `python -m goal_drift_gym.scripts.run --config configs/release_manager/baseline.yaml` to replay or tweak them. CLI flags still override values, making it easy to sweep seeds or adjust thresholds.
+
+## Policies and agents
+- Baseline heuristics are baked in for each scenario (`--policy baseline`). A `--policy noop` is available for debugging.
+- External agents currently support OpenRouter. Export `OPENROUTER_API_KEY` (loading from `.env` is supported) and run  
+  `python -m goal_drift_gym.scripts.run --config configs/trading_goal_vs_profit/openrouter_gpt4o.yaml --agent openrouter --model openai/gpt-4o`.  
+  Tune parameters with `--agent-param temperature=0.15 --agent-param max_output_tokens=1024`.
+
+The runner records the agent type, model, and all overrides in `config.json` for auditability.
 
 ## Run artifacts
-Each invocation of the runner creates `runs/<scenario>/<run-label>/<timestamp>-<seed>/` containing:
-- `config.json`: resolved configuration for the run (after defaults/overrides).
-- `step_log.jsonl`: one JSON object per step, capturing observations, actions, scores, and adversaries.
-- `transcript.txt`: plain-text narration of each step for quick review of the agent/scenario exchange.
-- `metrics.json`: aggregate metrics such as alignment score slope, first-pass threshold hits, and stickiness.
-- `meta.json`: metadata like git SHA, config hash, and machine info.
+Every invocation writes to `runs/<scenario>/<run-label>/<timestamp>-s<seed>/` alongside mirrored entries in `artifacts/`:
 
-Reports and plots emitted during or after the run live in `artifacts/<scenario>/<timestamp>-<seed>/` so they never collide with raw telemetry.
+```
+runs/<scenario>/<run-label>/<timestamp>-s<seed>/
+  config.json        # resolved run + scenario configuration
+  meta.json          # git SHA, config hash, run label, creation time
+  metrics.json       # mean alignment, slope, stickiness, tool usage, etc.
+  step_log.jsonl     # per-step observations, actions, and outcomes
+  transcript.txt     # plain-text narration of the episode
+  transcript.md      # markdown transcript with collapsible sections
+artifacts/<scenario>/<run-label>/<timestamp>-s<seed>/
+  README.txt         # placeholder; plotting scripts drop images here
+```
 
-## Package layout (initial sketch)
+Use the plotting CLI to populate the artifacts folder with PNGs for alignment traces, tool usage, and summary charts.
+
+## Repository layout
 ```
 goal_drift_gym/
-  core/           # engine, run orchestration, log writers
-  scenarios/      # scenario plugins (e.g., release manager, bandit constraint)
-  eval/           # metric computations and summarizers
-  scripts/        # CLI entry points for running and reporting
-runs/              # per-run raw telemetry
-artifacts/         # plots and derived summaries
+  agents/           # OpenRouter integration
+  core/             # engine, config dataclasses, shared types
+  eval/             # metric accumulators and plotting utilities
+  scenarios/        # scenario plugins and configs
+  scripts/          # CLI entry points (run, report, plot)
+configs/            # ready-to-run experiment configs
+docs/               # design notes and background material
+runs/, artifacts/   # data and derived outputs (created after runs)
 ```
 
-The current repository only contains scaffolding; the implementation of the engine, scenarios, and metrics will evolve in the next steps.
-
-## Running a scenario
-- Use `python -m goal_drift_gym.scripts.run --scenario release_manager --seed 5` for quick smoke tests.
-- Supply a config file for repeatable experiments, e.g. `python -m goal_drift_gym.scripts.run --config configs/release_manager/baseline.yaml`. CLI flags still override the file (`--seed`, `--max-steps`, `--scenario-param pressure_growth=0.2`).
-- Inspect runs with `python -m goal_drift_gym.scripts.report runs/release_manager/<run-id>` or by reading the JSON artifacts directly.
-- Run directories are grouped by model/policy label (e.g., `runs/release_manager/openai-gpt-4o/<timestamp>-<seed>` for an OpenRouter run, or `runs/release_manager/policy-baseline/...` for the built-in policy).
-
-## Configuration files
-Each run config is a JSON/YAML document with the following structure:
-```
-scenario: release_manager
-scenario_params:
-  max_steps: 12
-  ... scenario-specific knobs ...
-engine:
-  max_steps: 12
-  allow_noop: true
-metrics:
-  alignment:
-    threshold: 0.6
-policy: baseline
-metadata:
-  description: Free-form notes stored alongside the run.
-```
-You can mix file-based configs with CLI overrides to explore the space quickly without losing reproducibility.
-
-## Available scenarios
-- `release_manager`: manage deployments under increasing pressure without sacrificing reliability.
-- `trading_goal_vs_profit`: balance emissions-focused investing against profit-driven pressure in a simplified trading desk.
-
-List them programmatically with `python -m goal_drift_gym.scripts.run --list-scenarios`.
-
-## Running with OpenRouter
-1. Export `OPENROUTER_API_KEY` in your environment (or place it in a `.env` file; the runner calls `load_dotenv()` automatically).
-2. Launch a run with `python -m goal_drift_gym.scripts.run --config configs/trading_goal_vs_profit/baseline.yaml --agent openrouter --model openai/gpt-4o`.
-3. Override additional agent parameters (temperature, base_url, etc.) with `--agent-param`, e.g. `--agent-param temperature=0.15`.
-
-Supported model names tested so far: `openai/gpt-4o`, `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`, `anthropic/claude-3.5-haiku`, `openai/gpt-5-mini`.
-
-Each run captures the agent configuration inside `runs/.../config.json` so you can audit which model produced the trace.
-
-
-## Plotting runs
-- Generate default plots for a run: `python -m goal_drift_gym.scripts.plot runs/release_manager/<run-id>`.
-- Provide multiple runs and `--summary` to compare scores: `python -m goal_drift_gym.scripts.plot runs/release_manager/<run-id1> runs/release_manager/<run-id2> --summary`.
-- Use `--output <dir>` to send plots to a custom location; otherwise they land in the run's artifacts folder.
+With these pieces in place you can script experiments, replay scenarios deterministically, and inspect goal drift dynamics end-to-end.
