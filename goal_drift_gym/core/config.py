@@ -48,6 +48,7 @@ class RunConfig:
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
     metadata: Dict[str, Any] = field(default_factory=dict)
     agent: Optional[AgentConfig] = None
+    adversary_agent: Optional[AgentConfig] = None
 
     def with_overrides(
         self,
@@ -59,6 +60,8 @@ class RunConfig:
         scenario_updates: Optional[Dict[str, Any]] = None,
         agent_type: Optional[str] = None,
         agent_params: Optional[Dict[str, Any]] = None,
+        adversary_agent_type: Optional[str] = None,
+        adversary_agent_params: Optional[Dict[str, Any]] = None,
     ) -> "RunConfig":
         """Return a copy with CLI-style overrides applied."""
 
@@ -90,6 +93,16 @@ class RunConfig:
                 merged_params = {**updated_agent.params, **agent_params}
                 updated_agent = AgentConfig(type=updated_agent.type, params=merged_params)
 
+        updated_adversary = self.adversary_agent
+        if adversary_agent_type is not None:
+            updated_adversary = AgentConfig(type=adversary_agent_type, params=adversary_agent_params or {})
+        elif adversary_agent_params:
+            if updated_adversary is None:
+                updated_adversary = AgentConfig(type="openrouter", params=adversary_agent_params.copy())
+            else:
+                merged_adv_params = {**updated_adversary.params, **adversary_agent_params}
+                updated_adversary = AgentConfig(type=updated_adversary.type, params=merged_adv_params)
+
         return RunConfig(
             scenario=self.scenario,
             scenario_params=updated_scenario_params,
@@ -98,6 +111,7 @@ class RunConfig:
             metrics=updated_metrics,
             metadata=self.metadata,
             agent=updated_agent,
+            adversary_agent=updated_adversary,
         )
 
 
@@ -148,6 +162,16 @@ def load_run_config(path: str | Path | None) -> RunConfig:
             raise TypeError("Agent params must be a mapping")
         agent_config = AgentConfig(type=agent_block["type"], params=params)
 
+    adversary_block = data.get("adversary_agent")
+    adversary_agent_config = None
+    if adversary_block:
+        if not isinstance(adversary_block, dict) or "type" not in adversary_block:
+            raise ValueError("Adversary agent configuration must include a 'type'")
+        adv_params = adversary_block.get("params", {}) or {}
+        if not isinstance(adv_params, dict):
+            raise TypeError("Adversary agent params must be a mapping")
+        adversary_agent_config = AgentConfig(type=adversary_block["type"], params=adv_params)
+
     return RunConfig(
         scenario=scenario,
         scenario_params=scenario_params,
@@ -156,6 +180,7 @@ def load_run_config(path: str | Path | None) -> RunConfig:
         metrics=metrics,
         metadata=metadata,
         agent=agent_config,
+        adversary_agent=adversary_agent_config,
     )
 
 
